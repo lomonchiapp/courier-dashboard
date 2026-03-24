@@ -1,0 +1,15 @@
+node_modules/
+dist/
+dist-ssr/
+coverage/
+.env
+.env.local
+*.local
+.turbo
+*.log
+.DS_Store
+*.bundle
+
+# Deploy secrets (never commit)
+apps/api/deploy/.env.release
+apps/api/deploy/.vps-connection.env

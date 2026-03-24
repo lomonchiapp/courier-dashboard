@@ -1,0 +1,47 @@
+# Ejemplo para VPS con Docker ya en uso.
+# Copiar a deploy/docker-compose.yml y ajustar. NO exponer el puerto de Postgres al host.
+#
+# Uso:
+#   docker compose -f docker-compose.yml up -d
+#
+# La API queda en 127.0.0.1:3001 del host; Nginx/Caddy en el host debe hacer proxy a ese puerto.
+
+name: blumbox-api
+
+services:
+  api:
+    build:
+      context: ../..
+      dockerfile: apps/api/deploy/Dockerfile.example
+    env_file: .env
+    ports:
+      - "127.0.0.1:3001:3001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - blumbox_api
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: blumbox
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me}
+      POSTGRES_DB: blumbox_api
+    volumes:
+      - blumbox_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U blumbox -d blumbox_api"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - blumbox_api
+    # Sin ports: el host no abre 5432; solo la red interna.
+
+networks:
+  blumbox_api:
+    name: blumbox_api_net
+
+volumes:
+  blumbox_pgdata:

@@ -1,0 +1,19 @@
+@import "tailwindcss";
+@import "@blumbox/ui/styles";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Dashboard-specific: sidebar variables */
+:root {
+  --sidebar: var(--color-surface-900);
+  --sidebar-foreground: #fafafa;
+  --sidebar-border: var(--color-surface-700);
+  --sidebar-accent: var(--color-primary-500);
+}
+
+:root.light {
+  --sidebar: #ffffff;
+  --sidebar-foreground: var(--color-surface-900);
+  --sidebar-border: var(--color-surface-200);
+  --sidebar-accent: var(--color-primary-500);
+}

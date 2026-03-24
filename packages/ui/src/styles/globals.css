@@ -1,0 +1,96 @@
+@theme {
+  --font-sans: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Outfit", "Plus Jakarta Sans", sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", Consolas, monospace;
+
+  --color-primary-50: #e6fafb;
+  --color-primary-100: #b3f0f2;
+  --color-primary-200: #80e5e9;
+  --color-primary-300: #4ddbe0;
+  --color-primary-400: #26d2d8;
+  --color-primary-500: #01b9bf;
+  --color-primary-600: #019a9f;
+  --color-primary-700: #017b80;
+  --color-primary-800: #015c60;
+  --color-primary-900: #003d40;
+
+  --color-accent-50: #fef9ee;
+  --color-accent-100: #fceece;
+  --color-accent-200: #f9dcae;
+  --color-accent-300: #f6ca8e;
+  --color-accent-400: #f0b65a;
+  --color-accent-500: #ecb75b;
+  --color-accent-600: #d4a14f;
+  --color-accent-700: #b08542;
+  --color-accent-800: #8c6a35;
+  --color-accent-900: #684f28;
+
+  --color-surface-50: #faf9fa;
+  --color-surface-100: #f0eff0;
+  --color-surface-200: #e0dee0;
+  --color-surface-300: #c2bfc2;
+  --color-surface-400: #a39fa3;
+  --color-surface-500: #857f85;
+  --color-surface-600: #6b666b;
+  --color-surface-700: #504c50;
+  --color-surface-800: #3a373a;
+  --color-surface-900: #2d2730;
+  --color-surface-950: #1e1a21;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+}
+
+/* Dark mode (default) */
+:root {
+  --background: var(--color-surface-950);
+  --foreground: #fafafa;
+  --card: var(--color-surface-900);
+  --card-foreground: #fafafa;
+  --popover: var(--color-surface-900);
+  --popover-foreground: #fafafa;
+  --primary: var(--color-primary-500);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-surface-800);
+  --secondary-foreground: #fafafa;
+  --muted: var(--color-surface-800);
+  --muted-foreground: var(--color-surface-400);
+  --accent: var(--color-accent-500);
+  --accent-foreground: var(--color-surface-950);
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: var(--color-surface-700);
+  --input: var(--color-surface-700);
+  --ring: var(--color-primary-500);
+}
+
+/* Light mode override */
+:root.light {
+  --background: #fafafa;
+  --foreground: var(--color-surface-900);
+  --card: #ffffff;
+  --card-foreground: var(--color-surface-900);
+  --popover: #ffffff;
+  --popover-foreground: var(--color-surface-900);
+  --primary: var(--color-primary-500);
+  --primary-foreground: #ffffff;
+  --secondary: var(--color-surface-100);
+  --secondary-foreground: var(--color-surface-900);
+  --muted: var(--color-surface-100);
+  --muted-foreground: var(--color-surface-500);
+  --accent: var(--color-accent-500);
+  --accent-foreground: var(--color-surface-950);
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: var(--color-surface-200);
+  --input: var(--color-surface-200);
+  --ring: var(--color-primary-500);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}

@@ -1,0 +1,903 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id               String   @id @default(uuid())
+  slug             String   @unique
+  name             String
+  casilleroPrefix  String   @default("BLX") @map("casillero_prefix")
+  casilleroCounter Int      @default(0) @map("casillero_counter")
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  apiKeys               ApiKey[]
+  shipments             Shipment[]
+  events                TrackingEvent[]
+  customers             Customer[]
+  branches              Branch[]
+  preAlerts             PreAlert[]
+  receptions            Reception[]
+  rateTables            RateTable[]
+  notificationTemplates NotificationTemplate[]
+  webhookSubscriptions  WebhookSubscription[]
+  invoices              Invoice[]
+  payments              Payment[]
+  postAlerts            PostAlert[]
+  deliveryOrders        DeliveryOrder[]
+  bulkImports           BulkImport[]
+  containers            Container[]
+  dgaLabels             DgaLabel[]
+  paymentIntents        PaymentIntent[]
+  ecommerceConnections  EcommerceConnection[]
+}
+
+model ApiKey {
+  id          String    @id @default(uuid())
+  tenantId    String    @map("tenant_id")
+  name        String
+  /// SHA-256 hex of the raw API key (never store plaintext)
+  keyHash     String    @map("key_hash")
+  /// First 12 chars after prefix for identification (e.g. blx_live_ab12)
+  keyPrefix   String    @map("key_prefix")
+  role        ApiRole   @default(INTEGRATION)
+  createdAt   DateTime  @default(now()) @map("created_at")
+  lastUsedAt  DateTime? @map("last_used_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+enum ApiRole {
+  ADMIN
+  OPERATOR
+  INTEGRATION
+}
+
+model Shipment {
+  id              String         @id @default(uuid())
+  tenantId        String         @map("tenant_id")
+  trackingNumber  String         @map("tracking_number")
+  reference       String?
+  currentPhase    TrackingPhase  @default(CREATED) @map("current_phase")
+  metadata        Json           @default("{}")
+  createdAt       DateTime       @default(now()) @map("created_at")
+  updatedAt       DateTime       @updatedAt @map("updated_at")
+
+  customerId String?       @map("customer_id")
+
+  tenant     Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer   Customer?       @relation(fields: [customerId], references: [id])
+  events         TrackingEvent[]
+  preAlerts      PreAlert[]
+  receptions     Reception[]
+  postAlerts     PostAlert[]
+  deliveryOrders DeliveryOrder[]
+  invoiceItems   InvoiceItem[]
+  containerItems ContainerItem[]
+  dgaLabels      DgaLabel[]
+
+  @@unique([tenantId, trackingNumber])
+  @@index([tenantId])
+  @@index([tenantId, customerId])
+  @@map("shipments")
+}
+
+model TrackingEvent {
+  id              String            @id @default(uuid())
+  tenantId        String            @map("tenant_id")
+  shipmentId      String            @map("shipment_id")
+  occurredAt      DateTime          @map("occurred_at")
+  type            TrackingEventType
+  rawStatus       String?           @map("raw_status")
+  location        Json?
+  source          EventSource
+  correlationId   String?           @map("correlation_id")
+  payload         Json              @default("{}")
+  idempotencyKey  String?           @map("idempotency_key")
+
+  shipment Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([shipmentId, idempotencyKey])
+  @@index([tenantId, occurredAt])
+  @@index([shipmentId])
+  @@map("tracking_events")
+}
+
+enum TrackingPhase {
+  CREATED
+  RECEIVED
+  IN_TRANSIT
+  IN_CUSTOMS
+  CLEARED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  EXCEPTION
+  RETURNED
+}
+
+enum TrackingEventType {
+  CREATED
+  RECEIVED
+  DEPARTED
+  ARRIVED
+  IN_TRANSIT
+  CUSTOMS_IN
+  CUSTOMS_CLEARED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  EXCEPTION
+  NOTE
+}
+
+enum EventSource {
+  SCAN
+  WEBHOOK
+  INTEGRATION
+  MANUAL
+  SYSTEM
+}
+
+// ─── Phase 0: Audit ───
+
+model AuditLog {
+  id         String    @id @default(uuid())
+  tenantId   String    @map("tenant_id")
+  actor      String
+  actorType  ActorType @map("actor_type")
+  action     String
+  resource   String
+  resourceId String?   @map("resource_id")
+  meta       Json      @default("{}")
+  ip         String?
+  createdAt  DateTime  @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, resource, resourceId])
+  @@map("audit_logs")
+}
+
+enum ActorType {
+  API_KEY
+  CUSTOMER
+  SYSTEM
+}
+
+// ─── Phase 1: Customers ───
+
+model Customer {
+  id              String     @id @default(uuid())
+  tenantId        String     @map("tenant_id")
+  casillero       String
+  email           String
+  passwordHash    String     @map("password_hash")
+  firstName       String     @map("first_name")
+  lastName        String     @map("last_name")
+  phone           String?
+  idType          IdDocType? @map("id_type")
+  idNumber        String?    @map("id_number")
+  address         Json?
+  isActive        Boolean    @default(true) @map("is_active")
+  emailVerifiedAt DateTime?  @map("email_verified_at")
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+
+  tenant         Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipments      Shipment[]
+  preAlerts      PreAlert[]
+  invoices       Invoice[]
+  payments       Payment[]
+  deliveryOrders DeliveryOrder[]
+
+  @@unique([tenantId, casillero])
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@index([tenantId, idNumber])
+  @@map("customers")
+}
+
+enum IdDocType {
+  CEDULA
+  PASSPORT
+  RNC
+  OTHER
+}
+
+// ─── Phase 2: Branches ───
+
+model Branch {
+  id          String     @id @default(uuid())
+  tenantId    String     @map("tenant_id")
+  name        String
+  code        String
+  type        BranchType @default(WAREHOUSE)
+  address     Json
+  coordinates Json?
+  phone       String?
+  email       String?
+  hours       Json?
+  isActive    Boolean    @default(true) @map("is_active")
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+
+  tenant     Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  receptions Reception[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("branches")
+}
+
+enum BranchType {
+  WAREHOUSE
+  PICKUP_POINT
+  OFFICE
+  SORTING_CENTER
+}
+
+// ─── Phase 3: Pre-Alerts ───
+
+model PreAlert {
+  id             String         @id @default(uuid())
+  tenantId       String         @map("tenant_id")
+  customerId     String         @map("customer_id")
+  trackingNumber String         @map("tracking_number")
+  carrier        String?
+  store          String?
+  description    String?
+  estimatedValue Decimal?       @map("estimated_value") @db.Decimal(12, 2)
+  currency       String         @default("USD")
+  category       String?
+  invoiceUrl     String?        @map("invoice_url")
+  status         PreAlertStatus @default(PENDING)
+  shipmentId     String?        @map("shipment_id")
+  processedAt    DateTime?      @map("processed_at")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  shipment Shipment? @relation(fields: [shipmentId], references: [id])
+
+  @@unique([tenantId, trackingNumber])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@map("pre_alerts")
+}
+
+enum PreAlertStatus {
+  PENDING
+  RECEIVED
+  PROCESSED
+  CANCELLED
+}
+
+// ─── Phase 4: Receptions ───
+
+model Reception {
+  id               String          @id @default(uuid())
+  tenantId         String          @map("tenant_id")
+  shipmentId       String          @map("shipment_id")
+  branchId         String          @map("branch_id")
+  customerId       String?         @map("customer_id")
+  weightLbs        Decimal?        @map("weight_lbs") @db.Decimal(8, 2)
+  lengthCm         Decimal?        @map("length_cm") @db.Decimal(8, 2)
+  widthCm          Decimal?        @map("width_cm") @db.Decimal(8, 2)
+  heightCm         Decimal?        @map("height_cm") @db.Decimal(8, 2)
+  volumetricWeight Decimal?        @map("volumetric_weight") @db.Decimal(8, 2)
+  photos           Json            @default("[]")
+  notes            String?
+  charges          Json            @default("[]")
+  totalCharge      Decimal         @default(0) @map("total_charge") @db.Decimal(12, 2)
+  currency         String          @default("USD")
+  status           ReceptionStatus @default(PENDING)
+  receivedAt       DateTime        @default(now()) @map("received_at")
+  createdAt        DateTime        @default(now()) @map("created_at")
+  updatedAt        DateTime        @updatedAt @map("updated_at")
+
+  invoiceId String?  @map("invoice_id")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment Shipment @relation(fields: [shipmentId], references: [id])
+  branch   Branch   @relation(fields: [branchId], references: [id])
+  invoice  Invoice? @relation(fields: [invoiceId], references: [id])
+
+  @@index([tenantId, receivedAt])
+  @@index([tenantId, shipmentId])
+  @@index([tenantId, customerId])
+  @@map("receptions")
+}
+
+enum ReceptionStatus {
+  PENDING
+  MEASURED
+  CHARGED
+  READY_FOR_PICKUP
+  DELIVERED
+}
+
+// ─── Phase 5: Rate Tables ───
+
+model RateTable {
+  id         String   @id @default(uuid())
+  tenantId   String   @map("tenant_id")
+  name       String
+  originZone String?  @map("origin_zone")
+  destZone   String?  @map("dest_zone")
+  isDefault  Boolean  @default(false) @map("is_default")
+  isActive   Boolean  @default(true) @map("is_active")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tiers  RateTier[]
+
+  @@index([tenantId])
+  @@map("rate_tables")
+}
+
+model RateTier {
+  id          String  @id @default(uuid())
+  rateTableId String  @map("rate_table_id")
+  minWeight   Decimal @map("min_weight") @db.Decimal(8, 2)
+  maxWeight   Decimal @map("max_weight") @db.Decimal(8, 2)
+  pricePerLb  Decimal @map("price_per_lb") @db.Decimal(8, 2)
+  flatFee     Decimal @default(0) @map("flat_fee") @db.Decimal(8, 2)
+  currency    String  @default("USD")
+
+  rateTable RateTable @relation(fields: [rateTableId], references: [id], onDelete: Cascade)
+
+  @@index([rateTableId])
+  @@map("rate_tiers")
+}
+
+// ─── Phase 6: Notifications ───
+
+model NotificationTemplate {
+  id        String              @id @default(uuid())
+  tenantId  String              @map("tenant_id")
+  event     String
+  channel   NotificationChannel
+  subject   String?
+  body      String              @db.Text
+  isActive  Boolean             @default(true) @map("is_active")
+  createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, event, channel])
+  @@map("notification_templates")
+}
+
+model NotificationLog {
+  id         String              @id @default(uuid())
+  tenantId   String              @map("tenant_id")
+  customerId String?             @map("customer_id")
+  channel    NotificationChannel
+  recipient  String
+  event      String
+  subject    String?
+  body       String              @db.Text
+  status     NotificationStatus  @default(PENDING)
+  error      String?
+  sentAt     DateTime?           @map("sent_at")
+  createdAt  DateTime            @default(now()) @map("created_at")
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, customerId])
+  @@map("notification_logs")
+}
+
+model WebhookSubscription {
+  id        String   @id @default(uuid())
+  tenantId  String   @map("tenant_id")
+  url       String
+  events    String[]
+  secret    String
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("webhook_subscriptions")
+}
+
+model CustomerNotificationPref {
+  id         String              @id @default(uuid())
+  tenantId   String              @map("tenant_id")
+  customerId String              @map("customer_id")
+  channel    NotificationChannel
+  event      String
+  enabled    Boolean             @default(true)
+
+  @@unique([tenantId, customerId, channel, event])
+  @@map("customer_notification_prefs")
+}
+
+enum NotificationChannel {
+  EMAIL
+  SMS
+  PUSH
+  WEBHOOK
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+// ─── Facturación ───
+
+model Invoice {
+  id                String        @id @default(uuid())
+  tenantId          String        @map("tenant_id")
+  customerId        String        @map("customer_id")
+  number            String                              // Sequential per tenant: INV-00001
+  status            InvoiceStatus @default(DRAFT)
+  currency          String        @default("USD")
+  exchangeRate      Decimal       @default(1) @map("exchange_rate") @db.Decimal(10, 4)
+  subtotal          Decimal       @default(0) @db.Decimal(12, 2)
+  discountTotal     Decimal       @default(0) @map("discount_total") @db.Decimal(12, 2)
+  taxTotal          Decimal       @default(0) @map("tax_total") @db.Decimal(12, 2)
+  total             Decimal       @default(0) @db.Decimal(12, 2)
+  amountPaid        Decimal       @default(0) @map("amount_paid") @db.Decimal(12, 2)
+  balance           Decimal       @default(0) @db.Decimal(12, 2)
+  paymentTermDays   Int           @default(0) @map("payment_term_days")
+  issuedAt          DateTime?     @map("issued_at")
+  dueAt             DateTime?     @map("due_at")
+  paidAt            DateTime?     @map("paid_at")
+  notes             String?
+  fiscalNumber      String?       @map("fiscal_number")   // NCF / comprobante fiscal
+  fiscalType        String?       @map("fiscal_type")     // Tipo de comprobante
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+
+  tenant     Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer   Customer      @relation(fields: [customerId], references: [id])
+  items      InvoiceItem[]
+  payments   PaymentAllocation[]
+  receptions Reception[]
+  creditNotes CreditNote[] @relation("InvoiceCreditNotes")
+
+  @@unique([tenantId, number])
+  @@index([tenantId, customerId])
+  @@index([tenantId, status])
+  @@index([tenantId, issuedAt])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id          String  @id @default(uuid())
+  invoiceId   String  @map("invoice_id")
+  shipmentId  String? @map("shipment_id")
+  receptionId String? @map("reception_id")
+  description String
+  quantity    Decimal @default(1) @db.Decimal(10, 3)
+  unitPrice   Decimal @map("unit_price") @db.Decimal(12, 2)
+  discountPct Decimal @default(0) @map("discount_pct") @db.Decimal(5, 2)
+  discount    Decimal @default(0) @db.Decimal(12, 2)
+  taxPct      Decimal @default(0) @map("tax_pct") @db.Decimal(5, 2)
+  tax         Decimal @default(0) @db.Decimal(12, 2)
+  subtotal    Decimal @default(0) @db.Decimal(12, 2)
+  total       Decimal @default(0) @db.Decimal(12, 2)
+
+  invoice  Invoice   @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  shipment Shipment? @relation(fields: [shipmentId], references: [id])
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model Payment {
+  id          String        @id @default(uuid())
+  tenantId    String        @map("tenant_id")
+  customerId  String?       @map("customer_id")
+  method      PaymentMethod
+  amount      Decimal       @db.Decimal(12, 2)
+  currency    String        @default("USD")
+  reference   String?                           // Bank ref, card last4, check number
+  bankName    String?       @map("bank_name")
+  notes       String?
+  paidAt      DateTime      @default(now()) @map("paid_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+
+  tenant      Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer    Customer?           @relation(fields: [customerId], references: [id])
+  allocations PaymentAllocation[]
+
+  @@index([tenantId, paidAt])
+  @@index([tenantId, customerId])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id        String  @id @default(uuid())
+  paymentId String  @map("payment_id")
+  invoiceId String  @map("invoice_id")
+  amount    Decimal @db.Decimal(12, 2)
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([paymentId])
+  @@index([invoiceId])
+  @@map("payment_allocations")
+}
+
+model CreditNote {
+  id          String          @id @default(uuid())
+  tenantId    String          @map("tenant_id")
+  invoiceId   String          @map("invoice_id")
+  number      String                                    // CN-00001
+  reason      String
+  amount      Decimal         @db.Decimal(12, 2)
+  currency    String          @default("USD")
+  status      CreditNoteStatus @default(DRAFT)
+  issuedAt    DateTime?       @map("issued_at")
+  createdAt   DateTime        @default(now()) @map("created_at")
+
+  invoice Invoice @relation("InvoiceCreditNotes", fields: [invoiceId], references: [id])
+
+  @@unique([tenantId, number])
+  @@index([tenantId])
+  @@map("credit_notes")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+  VOIDED
+}
+
+enum PaymentMethod {
+  CASH
+  CREDIT_CARD
+  DEBIT_CARD
+  BANK_TRANSFER
+  CHECK
+  CUSTOMER_BALANCE
+  STRIPE
+  PAYPAL
+  OTHER
+}
+
+enum CreditNoteStatus {
+  DRAFT
+  ISSUED
+  APPLIED
+}
+
+// ─── Post-Alertas ───
+
+model PostAlert {
+  id              String          @id @default(uuid())
+  tenantId        String          @map("tenant_id")
+  shipmentId      String          @map("shipment_id")
+  customerId      String?         @map("customer_id")
+  number          String?                                // Numero de recepcion
+  trackingNumber  String          @map("tracking_number")
+  recipientName   String?         @map("recipient_name")
+  senderName      String?         @map("sender_name")
+  carrier         String?
+  fob             Decimal?        @db.Decimal(12, 2)
+  currency        String          @default("USD")
+  invoiceUrl      String?         @map("invoice_url")
+  content         String?
+  deliveredAt     DateTime?       @map("delivered_at")
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment Shipment @relation(fields: [shipmentId], references: [id])
+
+  @@index([tenantId, shipmentId])
+  @@index([tenantId, customerId])
+  @@map("post_alerts")
+}
+
+// ─── Órdenes de Entrega (Última Milla) ───
+
+model DeliveryOrder {
+  id              String              @id @default(uuid())
+  tenantId        String              @map("tenant_id")
+  shipmentId      String              @map("shipment_id")
+  customerId      String?             @map("customer_id")
+  number          String                                  // DO-00001
+  driverName      String?             @map("driver_name")
+  driverPhone     String?             @map("driver_phone")
+  driverVehicle   String?             @map("driver_vehicle")
+  pickupBranchId  String?             @map("pickup_branch_id")
+  deliveryAddress Json?               @map("delivery_address")
+  deliveryCoords  Json?               @map("delivery_coords") // { lat, lng }
+  deliveryType    DeliveryType        @default(PICKUP) @map("delivery_type")
+  status          DeliveryOrderStatus @default(PENDING)
+  scheduledAt     DateTime?           @map("scheduled_at")
+  pickedUpAt      DateTime?           @map("picked_up_at")
+  deliveredAt     DateTime?           @map("delivered_at")
+  signatureUrl    String?             @map("signature_url")
+  signatureContact String?            @map("signature_contact")
+  signatureIdType String?             @map("signature_id_type")
+  signatureId     String?             @map("signature_id")
+  photoUrl        String?             @map("photo_url")
+  failReason      String?             @map("fail_reason")
+  notes           String?
+  createdAt       DateTime            @default(now()) @map("created_at")
+  updatedAt       DateTime            @updatedAt @map("updated_at")
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  shipment Shipment  @relation(fields: [shipmentId], references: [id])
+  customer Customer? @relation(fields: [customerId], references: [id])
+
+  @@unique([tenantId, number])
+  @@index([tenantId, status])
+  @@index([tenantId, customerId])
+  @@index([tenantId, scheduledAt])
+  @@map("delivery_orders")
+}
+
+enum DeliveryType {
+  PICKUP        // Cliente recoge en sucursal
+  HOME_DELIVERY // Entrega a domicilio
+  LOCKER        // Entrega en casillero/locker
+}
+
+enum DeliveryOrderStatus {
+  PENDING
+  ASSIGNED
+  IN_TRANSIT
+  DELIVERED
+  FAILED
+  RETURNED
+  CANCELLED
+}
+
+// ─── Bulk Import ───
+
+model BulkImport {
+  id          String           @id @default(uuid())
+  tenantId    String           @map("tenant_id")
+  type        BulkImportType
+  status      BulkImportStatus @default(PENDING)
+  fileName    String?          @map("file_name")
+  totalRows   Int              @default(0) @map("total_rows")
+  processed   Int              @default(0)
+  succeeded   Int              @default(0)
+  failed      Int              @default(0)
+  errors      Json             @default("[]")
+  createdBy   String           @map("created_by")   // apiKeyId
+  startedAt   DateTime?        @map("started_at")
+  completedAt DateTime?        @map("completed_at")
+  createdAt   DateTime         @default(now()) @map("created_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, createdAt])
+  @@map("bulk_imports")
+}
+
+enum BulkImportType {
+  CUSTOMERS
+  SHIPMENTS
+  PRE_ALERTS
+}
+
+enum BulkImportStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+// ─── Contenedores Marítimos/Aéreos ───
+
+model Container {
+  id                 String          @id @default(uuid())
+  tenantId           String          @map("tenant_id")
+  number             String                                  // MSKU1234567 or AWB
+  type               ContainerType
+  mode               ShippingMode
+  origin             String?                                 // MIA, SHZ, etc.
+  destination        String?                                 // SDQ, STI, etc.
+  status             ContainerStatus @default(OPEN)
+  sealNumber         String?         @map("seal_number")
+  carrier            String?                                 // Shipping line or airline
+  vesselName         String?         @map("vessel_name")
+  voyageNumber       String?         @map("voyage_number")
+  blNumber           String?         @map("bl_number")       // Bill of Lading / AWB
+  estimatedDeparture DateTime?       @map("estimated_departure")
+  actualDeparture    DateTime?       @map("actual_departure")
+  estimatedArrival   DateTime?       @map("estimated_arrival")
+  actualArrival      DateTime?       @map("actual_arrival")
+  totalPieces        Int             @default(0) @map("total_pieces")
+  totalWeightLbs     Decimal?        @map("total_weight_lbs") @db.Decimal(10, 2)
+  notes              String?
+  createdAt          DateTime        @default(now()) @map("created_at")
+  updatedAt          DateTime        @updatedAt @map("updated_at")
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  items     ContainerItem[]
+  dgaLabels DgaLabel[]
+
+  @@unique([tenantId, number])
+  @@index([tenantId, status])
+  @@map("containers")
+}
+
+model ContainerItem {
+  id          String   @id @default(uuid())
+  containerId String   @map("container_id")
+  shipmentId  String   @map("shipment_id")
+  weightLbs   Decimal? @map("weight_lbs") @db.Decimal(8, 2)
+  pieces      Int      @default(1)
+  description String?
+  addedAt     DateTime @default(now()) @map("added_at")
+
+  container Container @relation(fields: [containerId], references: [id], onDelete: Cascade)
+  shipment  Shipment  @relation(fields: [shipmentId], references: [id])
+
+  @@unique([containerId, shipmentId])
+  @@index([containerId])
+  @@map("container_items")
+}
+
+enum ContainerType {
+  MARITIME_FCL
+  MARITIME_LCL
+  AIR
+}
+
+enum ShippingMode {
+  SEA
+  AIR
+}
+
+enum ContainerStatus {
+  OPEN
+  CLOSED
+  IN_TRANSIT
+  IN_PORT
+  IN_CUSTOMS
+  CLEARED
+  DELIVERED
+  CANCELLED
+}
+
+// ─── DGA (Aduanas) ───
+
+model DgaLabel {
+  id                String         @id @default(uuid())
+  tenantId          String         @map("tenant_id")
+  containerId       String?        @map("container_id")
+  shipmentId        String         @map("shipment_id")
+  customerId        String?        @map("customer_id")
+  consigneeName     String         @map("consignee_name")
+  consigneeCedula   String?        @map("consignee_cedula")
+  consigneeRnc      String?        @map("consignee_rnc")
+  consigneeAddress  String?        @map("consignee_address")
+  consigneePhone    String?        @map("consignee_phone")
+  trackingNumber    String         @map("tracking_number")
+  description       String
+  hsCode            String?        @map("hs_code")
+  category          String?
+  pieces            Int            @default(1)
+  weightLbs         Decimal        @map("weight_lbs") @db.Decimal(8, 2)
+  fobValue          Decimal        @map("fob_value") @db.Decimal(12, 2)
+  currency          String         @default("USD")
+  originCountry     String         @map("origin_country")
+  dgaBarcode        String?        @map("dga_barcode")
+  dgaManifestNumber String?        @map("dga_manifest_number")
+  regimeType        String?        @map("regime_type")
+  taxExempt         Boolean        @default(false) @map("tax_exempt")
+  itbisAmount       Decimal?       @map("itbis_amount") @db.Decimal(12, 2)
+  customsDuty       Decimal?       @map("customs_duty") @db.Decimal(12, 2)
+  totalTaxes        Decimal?       @map("total_taxes") @db.Decimal(12, 2)
+  status            DgaLabelStatus @default(PENDING)
+  generatedAt       DateTime?      @map("generated_at")
+  clearedAt         DateTime?      @map("cleared_at")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  tenant    Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  container Container? @relation(fields: [containerId], references: [id])
+  shipment  Shipment   @relation(fields: [shipmentId], references: [id])
+
+  @@index([tenantId, shipmentId])
+  @@index([tenantId, containerId])
+  @@index([tenantId, status])
+  @@map("dga_labels")
+}
+
+enum DgaLabelStatus {
+  PENDING
+  SUBMITTED
+  APPROVED
+  HELD
+  CLEARED
+  REJECTED
+}
+
+// ─── Payment Gateway Intents ───
+
+model PaymentIntent {
+  id                  String              @id @default(uuid())
+  tenantId            String              @map("tenant_id")
+  customerId          String              @map("customer_id")
+  invoiceId           String?             @map("invoice_id")
+  gateway             PaymentGateway
+  gatewayIntentId     String?             @map("gateway_intent_id")
+  gatewayClientSecret String?             @map("gateway_client_secret")
+  amount              Decimal             @db.Decimal(12, 2)
+  currency            String              @default("USD")
+  status              PaymentIntentStatus @default(CREATED)
+  metadata            Json                @default("{}")
+  errorMessage        String?             @map("error_message")
+  paymentId           String?             @map("payment_id")
+  createdAt           DateTime            @default(now()) @map("created_at")
+  updatedAt           DateTime            @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([gateway, gatewayIntentId])
+  @@index([tenantId, customerId])
+  @@index([tenantId, invoiceId])
+  @@map("payment_intents")
+}
+
+enum PaymentGateway {
+  STRIPE
+  PAYPAL
+}
+
+enum PaymentIntentStatus {
+  CREATED
+  REQUIRES_PAYMENT_METHOD
+  REQUIRES_CONFIRMATION
+  REQUIRES_ACTION
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  CANCELLED
+}
+
+// ─── E-commerce Connections ───
+
+model EcommerceConnection {
+  id           String            @id @default(uuid())
+  tenantId     String            @map("tenant_id")
+  platform     EcommercePlatform
+  shopDomain   String            @map("shop_domain")
+  webhookSecret String           @map("webhook_secret")
+  apiKey       String?           @map("api_key")
+  isActive     Boolean           @default(true) @map("is_active")
+  metadata     Json              @default("{}")
+  createdAt    DateTime          @default(now()) @map("created_at")
+  updatedAt    DateTime          @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, platform, shopDomain])
+  @@index([tenantId])
+  @@map("ecommerce_connections")
+}
+
+enum EcommercePlatform {
+  SHOPIFY
+  WOOCOMMERCE
+}

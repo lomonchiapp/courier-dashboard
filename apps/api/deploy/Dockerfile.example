@@ -1,0 +1,20 @@
+# Build desde la raíz del monorepo:
+#   docker build -f apps/api/deploy/Dockerfile.example -t blumbox-api .
+#
+# La API no depende de otros workspaces; solo hace falta la raíz pnpm + apps/api.
+
+FROM node:20-alpine
+RUN corepack enable && corepack prepare pnpm@10.12.0 --activate
+
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/api ./apps/api
+
+RUN pnpm install --frozen-lockfile --filter @blumbox/api...
+
+WORKDIR /app/apps/api
+ENV NODE_ENV=production
+RUN pnpm exec prisma generate && pnpm run build
+
+EXPOSE 3001
+CMD ["node", "dist/main.js"]

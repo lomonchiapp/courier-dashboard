@@ -1,0 +1,7 @@
+# Copia a `.vps-connection.env` y rellena (no subir a git).
+# No mezclar esto con `.env.release`: el compose carga `.env.release` en los contenedores.
+
+VPS_HOST=tu.ip.o.dominio
+VPS_USER=root
+# Opcional si tu cliente lo soporta (mejor: ssh-agent + clave)
+# VPS_SSH_PASSWORD=

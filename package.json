@@ -1,0 +1,26 @@
+{
+  "name": "syspaq",
+  "private": true,
+  "packageManager": "pnpm@10.12.0",
+  "scripts": {
+    "dev:api": "pnpm --filter @blumbox/api dev",
+    "dev:dashboard": "pnpm --filter @blumbox/courier-dashboard dev",
+    "dev:landing": "pnpm --filter @blumbox/syspaq-landing dev",
+    "build": "pnpm -r build",
+    "lint": "pnpm --filter @blumbox/api lint",
+    "deploy:api": "./scripts/deploy-api.sh",
+    "deploy:api:migrate": "./scripts/deploy-api.sh --migrate",
+    "deploy:api:logs": "./scripts/deploy-api.sh --logs",
+    "deploy:api:status": "./scripts/deploy-api.sh --status",
+    "seed": "pnpm --filter @blumbox/api prisma:seed",
+    "seed:demo": "pnpm --filter @blumbox/api prisma:seed:demo"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@prisma/client",
+      "prisma",
+      "@prisma/engines",
+      "@nestjs/core"
+    ]
+  }
+}

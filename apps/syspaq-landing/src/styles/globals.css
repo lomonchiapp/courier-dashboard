@@ -1,0 +1,19 @@
+@import "tailwindcss";
+@import "@blumbox/ui/styles";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Landing-specific overrides */
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background-color: var(--color-primary-500);
+  color: white;
+}
